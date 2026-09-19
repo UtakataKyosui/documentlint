@@ -58,4 +58,101 @@ describe("documentlint runner", () => {
 		expect(result.diagnostics).toHaveLength(1);
 		expect(result.diagnostics[0]?.engine).toBe("prh");
 	});
+
+	it("runs position-preserving syntax and check plugins from the config directory", async () => {
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), "documentlint-runner-plugin-"),
+		);
+		temporary.push(directory);
+		const configPath = path.join(directory, ".textlintrc.json");
+		fs.writeFileSync(
+			path.join(directory, "syntax.mjs"),
+			`export default {
+				apiVersion: 1,
+				preprocess({ text }) { return text.replace(":::note", "       "); },
+				markdownItPlugin() {}
+			};`,
+		);
+		fs.writeFileSync(
+			path.join(directory, "check.mjs"),
+			`export default (options) => ({
+				apiVersion: 1,
+				lint({ source, text }) {
+					if (text.includes(":::note")) throw new Error("syntax plugin did not run");
+					const start = source.indexOf(options.word);
+					return [{ ruleId: "forbidden-word", message: "Avoid it", range: { start, end: start + options.word.length } }];
+				}
+			});`,
+		);
+
+		const result = await runDocumentlint(
+			":::note\nbad\n",
+			path.join(directory, "article.md"),
+			{
+				version: 1,
+				markdownlint: { config: { MD041: false } },
+				extensionPlugins: {
+					syntax: { "./syntax.mjs": true },
+					checks: { "./check.mjs": { word: "bad" } },
+				},
+			},
+			false,
+			configPath,
+		);
+
+		expect(result.errors).toEqual([]);
+		expect(result.diagnostics).toContainEqual(
+			expect.objectContaining({
+				engine: "plugin:./check.mjs",
+				ruleId: "forbidden-word",
+				location: expect.objectContaining({ range: { start: 8, end: 11 } }),
+			}),
+		);
+	});
+
+	it("rejects syntax preprocessors that invalidate source locations", async () => {
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), "documentlint-runner-invalid-plugin-"),
+		);
+		temporary.push(directory);
+		fs.writeFileSync(
+			path.join(directory, "invalid.mjs"),
+			'export default { apiVersion: 1, preprocess({ text }) { return text + "x"; } };',
+		);
+		await expect(
+			runDocumentlint(
+				"text\n",
+				path.join(directory, "article.md"),
+				{
+					version: 1,
+					extensionPlugins: { syntax: { "./invalid.mjs": true } },
+				},
+				false,
+				path.join(directory, ".textlintrc.json"),
+			),
+		).rejects.toThrow("must preserve source length");
+	});
+
+	it("rejects a plugin placed in an incompatible extension category", async () => {
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), "documentlint-runner-category-plugin-"),
+		);
+		temporary.push(directory);
+		fs.writeFileSync(
+			path.join(directory, "check-only.mjs"),
+			"export default { apiVersion: 1, lint() { return []; } };",
+		);
+		await expect(
+			runDocumentlint(
+				"text\n",
+				path.join(directory, "article.md"),
+				{
+					version: 1,
+					extensionPlugins: { syntax: { "./check-only.mjs": true } },
+				},
+				false,
+				path.join(directory, ".textlintrc.json"),
+			),
+		).rejects.toThrow("markdown.syntax plugin");
+	});
 });

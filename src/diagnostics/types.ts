@@ -1,6 +1,10 @@
 export type DiagnosticSeverity = "error" | "warning" | "info";
 
-export type SourceEngine = "textlint" | "markdownlint" | "prh";
+export type SourceEngine =
+	| "textlint"
+	| "markdownlint"
+	| "prh"
+	| `plugin:${string}`;
 
 /** 0 始まりのインデックスで表す文字範囲。 */
 export interface TextRange {

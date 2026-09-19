@@ -11,6 +11,14 @@ import {
 	resolveTextlintrcObject,
 } from "./config/textlintrc.js";
 import type { Diagnostic, FixResult, LintResult } from "./diagnostics/types.js";
+import {
+	DocumentlintPluginError,
+	loadDocumentlintPlugins,
+} from "./plugins/loader.js";
+import type {
+	DocumentlintPluginContext,
+	DocumentlintPluginDiagnostic,
+} from "./plugins/types.js";
 import { maskZennSyntax } from "./zenn/mask.js";
 
 export interface RunResult {
@@ -33,6 +41,84 @@ function isFixResult(value: LintResult | FixResult): value is FixResult {
 	return "output" in value;
 }
 
+function position(
+	text: string,
+	offset: number,
+): { line: number; column: number } {
+	const before = text.slice(0, offset);
+	return {
+		line: before.split(/\r?\n/).length,
+		column:
+			offset - Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r")),
+	};
+}
+
+function pluginDiagnostic(
+	pluginId: string,
+	diagnostic: DocumentlintPluginDiagnostic,
+	text: string,
+	filePath: string,
+): Diagnostic {
+	if (
+		typeof diagnostic.ruleId !== "string" ||
+		typeof diagnostic.message !== "string" ||
+		(diagnostic.severity !== undefined &&
+			!(["error", "warning", "info"] as const).includes(diagnostic.severity))
+	)
+		throw new DocumentlintPluginError(
+			pluginId,
+			"each diagnostic must contain string ruleId/message values and a supported severity.",
+		);
+	if (
+		diagnostic.range.start < 0 ||
+		diagnostic.range.end < diagnostic.range.start ||
+		diagnostic.range.end > text.length
+	)
+		throw new DocumentlintPluginError(
+			pluginId,
+			`rule "${diagnostic.ruleId}" returned an invalid range ${diagnostic.range.start}:${diagnostic.range.end}.`,
+		);
+	return {
+		engine: `plugin:${pluginId}`,
+		ruleId: diagnostic.ruleId,
+		message: diagnostic.message,
+		severity: diagnostic.severity ?? "error",
+		filePath,
+		location: {
+			start: position(text, diagnostic.range.start),
+			end: position(text, diagnostic.range.end),
+			range: diagnostic.range,
+		},
+	};
+}
+
+function assertPositionPreserving(
+	pluginId: string,
+	before: string,
+	after: string,
+): void {
+	if (before.length !== after.length)
+		throw new DocumentlintPluginError(
+			pluginId,
+			`preprocess must preserve source length (received ${after.length}, expected ${before.length}).`,
+		);
+	for (let index = 0; index < before.length; index += 1) {
+		const beforeCharacter = before[index];
+		const afterCharacter = after[index];
+		if (
+			(beforeCharacter === "\n" ||
+				beforeCharacter === "\r" ||
+				afterCharacter === "\n" ||
+				afterCharacter === "\r") &&
+			afterCharacter !== beforeCharacter
+		)
+			throw new DocumentlintPluginError(
+				pluginId,
+				`preprocess must preserve the line break at offset ${index}.`,
+			);
+	}
+}
+
 export async function runDocumentlint(
 	text: string,
 	filePath: string,
@@ -40,8 +126,39 @@ export async function runDocumentlint(
 	fix = false,
 	configPath = "documentlint.json",
 ): Promise<RunResult> {
-	const input = config.zenn?.enabled ? maskZennSyntax(text) : text;
 	const configDirectory = path.dirname(path.resolve(configPath));
+	const [syntaxPlugins, checkPlugins] = await Promise.all([
+		loadDocumentlintPlugins(config.extensionPlugins?.syntax, configPath),
+		loadDocumentlintPlugins(config.extensionPlugins?.checks, configPath),
+	]);
+	for (const loaded of syntaxPlugins)
+		if (
+			loaded.plugin.preprocess === undefined &&
+			loaded.plugin.markdownItPlugin === undefined
+		)
+			throw new DocumentlintPluginError(
+				loaded.id,
+				"a markdown.syntax plugin must expose preprocess or markdownItPlugin.",
+			);
+	for (const loaded of checkPlugins)
+		if (loaded.plugin.lint === undefined)
+			throw new DocumentlintPluginError(
+				loaded.id,
+				"a markdown.checks plugin must expose lint.",
+			);
+	let input = config.zenn?.enabled ? maskZennSyntax(text) : text;
+	for (const loaded of syntaxPlugins) {
+		if (loaded.plugin.preprocess === undefined) continue;
+		const context: DocumentlintPluginContext = {
+			filePath,
+			configPath,
+			source: text,
+			text: input,
+		};
+		const processed = await loaded.plugin.preprocess(context, loaded.options);
+		assertPositionPreserving(loaded.id, input, processed);
+		input = processed;
+	}
 	type TaskResult = {
 		readonly diagnostics: readonly Diagnostic[];
 		readonly output?: string;
@@ -51,7 +168,7 @@ export async function runDocumentlint(
 	if (config.textlint) {
 		const textlintConfigPath = config.textlint.config
 			? path.resolve(configDirectory, config.textlint.config)
-			: path.resolve(configDirectory, "documentlint.json");
+			: path.resolve(configPath);
 		const rc = config.textlint.config
 			? resolveTextlintrc(textlintConfigPath)
 			: resolveTextlintrcObject(
@@ -76,12 +193,31 @@ export async function runDocumentlint(
 		});
 	}
 	if (config.markdownlint) {
+		const pluginRegistrations = syntaxPlugins.flatMap((loaded) =>
+			loaded.plugin.markdownItPlugin === undefined
+				? []
+				: [
+						{
+							plugin: loaded.plugin.markdownItPlugin,
+							options: loaded.options,
+						},
+					],
+		);
 		const adapter = createMarkdownlintAdapter({
+			moduleBaseDirectory: configDirectory,
 			...(config.markdownlint.config
 				? { config: config.markdownlint.config }
 				: {}),
-			...(config.markdownlint.markdownItPlugins
-				? { markdownItPlugins: config.markdownlint.markdownItPlugins }
+			...(config.markdownlint.markdownItPlugins ||
+			config.extensionPlugins?.markdownIt ||
+			pluginRegistrations.length
+				? {
+						markdownItPlugins: [
+							...(config.markdownlint.markdownItPlugins ?? []),
+							...(config.extensionPlugins?.markdownIt ?? []),
+							...pluginRegistrations,
+						],
+					}
 				: {}),
 		});
 		tasks.push({
@@ -127,6 +263,26 @@ export async function runDocumentlint(
 				diagnostics: result.diagnostics,
 				...(isFixResult(result) ? { output: result.output } : {}),
 				engine: "prh",
+			})),
+		});
+	}
+	for (const loaded of checkPlugins) {
+		if (loaded.plugin.lint === undefined) continue;
+		const context: DocumentlintPluginContext = {
+			filePath,
+			configPath,
+			source: text,
+			text: input,
+		};
+		tasks.push({
+			engine: `plugin:${loaded.id}`,
+			promise: Promise.resolve(
+				loaded.plugin.lint(context, loaded.options),
+			).then((diagnostics) => ({
+				engine: `plugin:${loaded.id}`,
+				diagnostics: diagnostics.map((diagnostic) =>
+					pluginDiagnostic(loaded.id, diagnostic, text, filePath),
+				),
 			})),
 		});
 	}

@@ -55,6 +55,21 @@ export type {
 	Suggestion,
 	TextRange,
 } from "./diagnostics/types.js";
+export type {
+	DocumentlintPlugin,
+	DocumentlintPluginContext,
+	DocumentlintPluginDiagnostic,
+	DocumentlintPluginExport,
+	DocumentlintPluginFactory,
+	DocumentlintPluginOptions,
+	DocumentlintPluginSettings,
+	LoadedDocumentlintPlugin,
+} from "./plugins/index.js";
+export {
+	DocumentlintPluginError,
+	defineDocumentlintPlugin,
+	loadDocumentlintPlugins,
+} from "./plugins/index.js";
 export type { RunResult } from "./runner.js";
 export { runDocumentlint } from "./runner.js";
 export { maskZennSyntax } from "./zenn/mask.js";
