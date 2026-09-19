@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "no-todo": true
+  },
+  "filters": {
+    "comments": true
+  },
+  "plugins": {
+    "@textlint/textlint-plugin-markdown": true
+  }
+}
