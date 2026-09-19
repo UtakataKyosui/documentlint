@@ -1,6 +1,9 @@
 {
   "rules": {
-    "no-todo": true
+    "no-todo": true,
+    "ja-space-between-half-and-full-width": {
+      "space": "always"
+    }
   },
   "filters": {
     "comments": true
