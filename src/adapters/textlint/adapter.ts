@@ -72,6 +72,17 @@ function resolvePresetRuleOptions(
   return undefined;
 }
 
+/** textlint が preset の子ルールに付ける ruleId を再現する。 */
+function presetRuleId(presetId: string, ruleKey: string): string {
+  const slashIndex = presetId.startsWith("@") ? presetId.indexOf("/") : -1;
+  const scope = slashIndex === -1 ? "" : presetId.slice(0, slashIndex + 1);
+  const bare = slashIndex === -1 ? presetId : presetId.slice(slashIndex + 1);
+  const canonicalPresetName = bare
+    .replace(/^textlint-rule-preset-/, "")
+    .replace(/^preset-/, "");
+  return `${scope}${canonicalPresetName}/${ruleKey}`;
+}
+
 async function expandPresetRules(
   entry: ResolvedRuleEntry,
   configPath: string
@@ -100,7 +111,7 @@ async function expandPresetRules(
   return Object.entries(presetModule.rules).map(([ruleKey, rule]) => {
     const options = resolvePresetRuleOptions(ruleKey, entry.presetRules, presetModule.rulesConfig);
     return {
-      ruleId: `${entry.ruleId}/${ruleKey}`,
+      ruleId: presetRuleId(entry.ruleId, ruleKey),
       rule,
       ...(options !== undefined ? { options } : {})
     };

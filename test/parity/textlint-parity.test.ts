@@ -12,7 +12,8 @@ import type { TextlintReference } from "./run-textlint.js";
 
 const fixturesDir = path.resolve(fileURLToPath(import.meta.url), "../../fixtures");
 const configPath = path.join(fixturesDir, ".textlintrc.json");
-const fixtureNames = ["basic.md", "japanese.md", "fixable.md"] as const;
+const compositeConfigPath = path.join(fixturesDir, "composite.textlintrc.json");
+const fixtureNames = ["basic.md", "japanese.md", "fixable.md", "spacing.md"] as const;
 
 type ComparableSeverity = "error" | "warning" | "info";
 
@@ -28,6 +29,15 @@ interface ComparableDiagnostic {
   readonly severity: ComparableSeverity;
   readonly filePath: string;
   readonly location: ComparableLocation;
+}
+
+interface ComparableFix {
+  readonly range: { readonly start: number; readonly end: number };
+  readonly text: string;
+}
+
+interface ComparableDiagnosticWithFix extends ComparableDiagnostic {
+  readonly fix?: ComparableFix;
 }
 
 /**
@@ -71,6 +81,37 @@ function actualFromDiagnostic(diagnostic: Diagnostic): ComparableDiagnostic {
   };
 }
 
+function expectedFromMessageWithFix(
+  message: TextlintMessage,
+  filePath: string
+): ComparableDiagnosticWithFix {
+  const base = expectedFromMessage(message, filePath);
+  if (message.fix === undefined) {
+    return base;
+  }
+  return {
+    ...base,
+    fix: {
+      range: { start: message.fix.range[0], end: message.fix.range[1] },
+      text: message.fix.text
+    }
+  };
+}
+
+function actualFromDiagnosticWithFix(diagnostic: Diagnostic): ComparableDiagnosticWithFix {
+  const base = actualFromDiagnostic(diagnostic);
+  if (diagnostic.fix === undefined) {
+    return base;
+  }
+  return {
+    ...base,
+    fix: {
+      range: { start: diagnostic.fix.range.start, end: diagnostic.fix.range.end },
+      text: diagnostic.fix.text
+    }
+  };
+}
+
 /** ruleId → range.start → range.end → message の順で全順序に並べる。 */
 function compareDiagnostics(a: ComparableDiagnostic, b: ComparableDiagnostic): number {
   if (a.ruleId !== b.ruleId) {
@@ -88,7 +129,7 @@ function compareDiagnostics(a: ComparableDiagnostic, b: ComparableDiagnostic): n
   return 0;
 }
 
-function sortDiagnostics(diagnostics: readonly ComparableDiagnostic[]): ComparableDiagnostic[] {
+function sortDiagnostics<T extends ComparableDiagnostic>(diagnostics: readonly T[]): T[] {
   return [...diagnostics].sort(compareDiagnostics);
 }
 
@@ -155,5 +196,63 @@ describe("textlint adapter parity with textlint itself", () => {
     );
     const actualRemaining = sortDiagnostics(documentlintFix.remaining.map(actualFromDiagnostic));
     expect(actualRemaining).toEqual(expectedRemaining);
+  });
+
+  it("matches textlint's fix output, diagnostics and applied/remaining fix edits for spacing.md", async () => {
+    const { filePath, text } = readFixture("spacing.md");
+
+    const referenceFix: TextlintFixResult = await reference.fixText(text, filePath);
+    const documentlintFix = await adapter.fixText(text, filePath);
+
+    expect(documentlintFix.output).toBe(referenceFix.output);
+    expect(documentlintFix.output).not.toBe(text);
+
+    const expectedDiagnostics = sortDiagnostics(
+      referenceFix.messages.map((message) => expectedFromMessageWithFix(message, filePath))
+    );
+    const actualDiagnostics = sortDiagnostics(
+      documentlintFix.diagnostics.map(actualFromDiagnosticWithFix)
+    );
+    expect(actualDiagnostics).toEqual(expectedDiagnostics);
+
+    const expectedApplied = sortDiagnostics(
+      referenceFix.applyingMessages.map((message) => expectedFromMessageWithFix(message, filePath))
+    );
+    const actualApplied = sortDiagnostics(documentlintFix.applied.map(actualFromDiagnosticWithFix));
+    expect(actualApplied).toEqual(expectedApplied);
+    expect(actualApplied.length).toBeGreaterThan(0);
+    expect(actualApplied.every((diagnostic) => diagnostic.fix !== undefined)).toBe(true);
+
+    const expectedRemaining = sortDiagnostics(
+      referenceFix.remainingMessages.map((message) => expectedFromMessageWithFix(message, filePath))
+    );
+    const actualRemaining = sortDiagnostics(
+      documentlintFix.remaining.map(actualFromDiagnosticWithFix)
+    );
+    expect(actualRemaining).toEqual(expectedRemaining);
+  });
+
+  it("matches textlint for existing presets and allowlist/comments/node-types filters", async () => {
+    const { filePath, text } = readFixture("composite.md");
+    const compositeReference = await createTextlintReference(compositeConfigPath);
+    const compositeAdapter = await createTextlintAdapter(resolveTextlintrc(compositeConfigPath));
+
+    const referenceResult = await compositeReference.lintText(text, filePath);
+    const documentlintResult = await compositeAdapter.lintText(text, filePath);
+
+    const expected = sortDiagnostics(
+      referenceResult.messages.map((message) => expectedFromMessage(message, filePath))
+    );
+    const actual = sortDiagnostics(documentlintResult.diagnostics.map(actualFromDiagnostic));
+    expect(actual).toEqual(expected);
+
+    const ruleIds = new Set(referenceResult.messages.map((message) => message.ruleId));
+    expect(ruleIds).toContain("ja-technical-writing/max-kanji-continuous-len");
+    expect(ruleIds).toContain("ja-spacing/ja-space-between-half-and-full-width");
+    expect(ruleIds).toContain("@textlint-ja/ai-writing/no-ai-hype-expressions");
+
+    const todoMessages = referenceResult.messages.filter((message) => message.ruleId === "no-todo");
+    expect(todoMessages).toHaveLength(1);
+    expect(todoMessages[0]?.loc.start.line).toBe(7);
   });
 });

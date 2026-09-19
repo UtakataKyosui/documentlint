@@ -123,13 +123,13 @@ describe("resolveModule", () => {
 
   it("includes a textlint-rule-preset- candidate when a preset cannot be resolved", () => {
     try {
-      resolveModule("preset", "preset-ja-technical-writing", projectRoot);
+      resolveModule("preset", "preset-definitely-not-real", projectRoot);
       throw new Error("expected resolveModule to throw");
     } catch (error) {
       expect(error).toBeInstanceOf(ModuleResolutionError);
       const resolutionError = error as ModuleResolutionError;
       expect(resolutionError.candidates).toContain(
-        "textlint-rule-preset-ja-technical-writing"
+        "textlint-rule-preset-definitely-not-real"
       );
     }
   });

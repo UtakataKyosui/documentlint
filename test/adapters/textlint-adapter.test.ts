@@ -256,7 +256,7 @@ describe("createTextlintAdapter", () => {
     const result = await adapter.lintText("LOUD and USERMARK here\n", "doc.md");
 
     const ruleIds = result.diagnostics.map((diagnostic) => diagnostic.ruleId).sort();
-    expect(ruleIds).toEqual(["preset-fake/custom", "preset-fake/loud"]);
+    expect(ruleIds).toEqual(["fake/custom", "fake/loud"]);
   });
 
   it("does not trigger the preset default marker once it has been overridden", async () => {
@@ -305,7 +305,7 @@ describe("createTextlintAdapter", () => {
     const result = await adapter.lintText("LOUD and MARK here\n", "doc.md");
 
     const ruleIds = result.diagnostics.map((diagnostic) => diagnostic.ruleId);
-    expect(ruleIds).not.toContain("preset-fake/loud");
+    expect(ruleIds).not.toContain("fake/loud");
   });
 
   it("enables all preset rules with their default options when the preset is set to true", async () => {
@@ -316,7 +316,7 @@ describe("createTextlintAdapter", () => {
     const result = await adapter.lintText("LOUD and MARK here\n", "doc.md");
 
     const ruleIds = result.diagnostics.map((diagnostic) => diagnostic.ruleId).sort();
-    expect(ruleIds).toEqual(["preset-fake/custom", "preset-fake/loud"]);
+    expect(ruleIds).toEqual(["fake/custom", "fake/loud"]);
   });
 
   it("throws UnsupportedConfigError when a preset module does not export a rules object", async () => {
