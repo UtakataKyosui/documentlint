@@ -1,24 +1,24 @@
 {
-  "rules": {
-    "no-todo": true,
-    "preset-ja-technical-writing": true,
-    "preset-ja-spacing": {
-      "ja-space-between-half-and-full-width": {
-        "space": "always"
-      }
-    },
-    "@textlint-ja/preset-ai-writing": true
-  },
-  "filters": {
-    "allowlist": {
-      "allow": ["ALLOWLIST_TODO"]
-    },
-    "comments": true,
-    "node-types": {
-      "nodeTypes": ["BlockQuote"]
-    }
-  },
-  "plugins": {
-    "@textlint/textlint-plugin-markdown": true
-  }
+	"rules": {
+		"no-todo": true,
+		"preset-ja-technical-writing": true,
+		"preset-ja-spacing": {
+			"ja-space-between-half-and-full-width": {
+				"space": "always"
+			}
+		},
+		"@textlint-ja/preset-ai-writing": true
+	},
+	"filters": {
+		"allowlist": {
+			"allow": ["ALLOWLIST_TODO"]
+		},
+		"comments": true,
+		"node-types": {
+			"nodeTypes": ["BlockQuote"]
+		}
+	},
+	"plugins": {
+		"@textlint/textlint-plugin-markdown": true
+	}
 }

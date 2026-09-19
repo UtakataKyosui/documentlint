@@ -1,29 +1,60 @@
+export type {
+	MarkdownlintAdapter,
+	MarkdownlintAdapterOptions,
+} from "./adapters/markdownlint/index.js";
+export { createMarkdownlintAdapter } from "./adapters/markdownlint/index.js";
+export type { PrhAdapter } from "./adapters/prh/index.js";
+export {
+	createPrhAdapter,
+	createPrhAdapterFromFiles,
+} from "./adapters/prh/index.js";
+export type {
+	CreateTextlintAdapterOptions,
+	TextlintAdapter,
+} from "./adapters/textlint/index.js";
 export { createTextlintAdapter } from "./adapters/textlint/index.js";
-export type { CreateTextlintAdapterOptions, TextlintAdapter } from "./adapters/textlint/index.js";
-
-export { resolveTextlintrc } from "./config/textlintrc.js";
 export type {
-  ResolvedPresetRuleEntry,
-  ResolvedRuleEntry,
-  ResolvedTextlintrc,
-  TextlintRuleOptions
-} from "./config/textlintrc.js";
-
-export { resolveModule, ModuleResolutionError } from "./config/resolver.js";
-export type { ModuleKind, ResolvedModule } from "./config/resolver.js";
-
+	ConfigLocation,
+	DocumentlintConfig,
+	ImportResult,
+} from "./config/documentlint.js";
+export {
+	DocumentlintConfigError,
+	documentlintConfigSchema,
+	importLegacyConfig,
+	loadDocumentlintConfig,
+	parseDocumentlintConfig,
+} from "./config/documentlint.js";
 export { UnsupportedConfigError } from "./config/errors.js";
-
-export { normalizeFixResult, normalizeMessage, normalizeResult } from "./diagnostics/normalize.js";
+export type { ModuleKind, ResolvedModule } from "./config/resolver.js";
+export { ModuleResolutionError, resolveModule } from "./config/resolver.js";
 export type {
-  Diagnostic,
-  DiagnosticLocation,
-  DiagnosticSeverity,
-  FixEdit,
-  FixResult,
-  LintResult,
-  Position,
-  SourceEngine,
-  Suggestion,
-  TextRange
+	ResolvedPresetRuleEntry,
+	ResolvedRuleEntry,
+	ResolvedTextlintrc,
+	TextlintRuleOptions,
+} from "./config/textlintrc.js";
+export {
+	resolveTextlintrc,
+	resolveTextlintrcObject,
+} from "./config/textlintrc.js";
+export {
+	normalizeFixResult,
+	normalizeMessage,
+	normalizeResult,
+} from "./diagnostics/normalize.js";
+export type {
+	Diagnostic,
+	DiagnosticLocation,
+	DiagnosticSeverity,
+	FixEdit,
+	FixResult,
+	LintResult,
+	Position,
+	SourceEngine,
+	Suggestion,
+	TextRange,
 } from "./diagnostics/types.js";
+export type { RunResult } from "./runner.js";
+export { runDocumentlint } from "./runner.js";
+export { maskZennSyntax } from "./zenn/mask.js";

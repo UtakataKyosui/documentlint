@@ -1,34 +1,47 @@
 {
-  "name": "documentlint",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.test.json",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@textlint/kernel": "^15.8.0",
-    "@textlint/module-interop": "^15.8.0",
-    "@textlint/textlint-plugin-markdown": "^15.8.0",
-    "@textlint/types": "^15.8.0",
-    "textlint": "^15.8.0"
-  },
-  "devDependencies": {
-    "@textlint-ja/textlint-rule-preset-ai-writing": "^1.7.0",
-    "@types/node": "^26.6.1",
-    "textlint-filter-rule-allowlist": "^4.0.0",
-    "textlint-filter-rule-comments": "^1.3.0",
-    "textlint-filter-rule-node-types": "^1.1.0",
-    "textlint-rule-ja-space-between-half-and-full-width": "^3.0.3",
-    "textlint-rule-no-todo": "^2.0.1",
-    "textlint-rule-preset-ja-spacing": "^3.0.3",
-    "textlint-rule-preset-ja-technical-writing": "^12.0.2",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.1"
-  }
+	"name": "documentlint",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"bin": {
+		"documentlint": "./dist/cli.js"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.test.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@textlint/kernel": "^15.8.0",
+		"@textlint/module-interop": "^15.8.0",
+		"@textlint/textlint-plugin-markdown": "^15.8.0",
+		"@textlint/types": "^15.8.0",
+		"fast-glob": "^3.3.3",
+		"jsonc-parser": "^3.3.1",
+		"markdown-it": "^15.0.2",
+		"markdown-it-footnote": "^4.0.0",
+		"markdownlint": "^0.41.1",
+		"markdownlint-cli2": "^0.23.2",
+		"prh": "^6.1.0",
+		"textlint": "^15.8.0",
+		"textlint-rule-prh": "^6.1.0",
+		"yaml": "^2.9.1"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.14",
+		"@textlint-ja/textlint-rule-preset-ai-writing": "^1.7.0",
+		"@types/node": "^26.6.1",
+		"textlint-filter-rule-allowlist": "^4.0.0",
+		"textlint-filter-rule-comments": "^1.3.0",
+		"textlint-filter-rule-node-types": "^1.1.0",
+		"textlint-rule-ja-space-between-half-and-full-width": "^3.0.3",
+		"textlint-rule-no-todo": "^2.0.1",
+		"textlint-rule-preset-ja-spacing": "^3.0.3",
+		"textlint-rule-preset-ja-technical-writing": "^12.0.2",
+		"typescript": "^7.0.2",
+		"vitest": "^5.0.1"
+	}
 }
