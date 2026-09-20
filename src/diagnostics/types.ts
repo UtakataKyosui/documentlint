@@ -56,3 +56,15 @@ export interface FixResult extends LintResult {
 	readonly applied: readonly Diagnostic[];
 	readonly remaining: readonly Diagnostic[];
 }
+
+/**
+ * Two or more fix edits proposed against the same round-start input whose
+ * ranges overlap. "duplicate" edits are byte-identical (same range and
+ * replacement text) and are applied once; "conflicting" edits disagree and
+ * are never applied automatically.
+ */
+export interface FixConflict {
+	readonly range: TextRange;
+	readonly kind: "duplicate" | "conflicting";
+	readonly diagnostics: readonly Diagnostic[];
+}

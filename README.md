@@ -28,8 +28,8 @@ textlint rules.
 }
 ```
 
-Run `documentlint [--config .textlintrc.json] [--fix] [--format human|json] [files/globs...]`.
-It exits with 0 for no findings, 1 for findings, and 2 for configuration or engine errors. `--fix` is the only mode that writes files; standard input is never written.
+Run `documentlint [--config .textlintrc.json] [--fix] [--dry-run] [--max-iterations n] [--format human|json] [files/globs...]`.
+It exits with 0 for no findings, 1 for findings or a `--fix` run that stopped without converging, and 2 for configuration or engine errors. `--fix` writes files; `--dry-run` previews the same multi-round fix as a diff without writing; standard input is never written. See [configuration and plugin API](docs/configuration.md) for `--max-iterations` and how multi-round fixing can differ from a single textlint fix pass.
 
 Plugin names use the `documentlint-plugin-` prefix, following textlint's naming
 style. For example, `"heading-policy"` resolves to

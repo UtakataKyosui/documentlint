@@ -5,6 +5,7 @@ import MarkdownIt from "markdown-it";
 import type { LintError } from "markdownlint";
 import { applyFixes } from "markdownlint";
 import { lint } from "markdownlint/promise";
+import { diffToFixEdit } from "../../diagnostics/diff.js";
 import type {
 	Diagnostic,
 	FixResult,
@@ -23,15 +24,25 @@ export interface MarkdownlintAdapterOptions {
 	)[];
 }
 
+/** Line/column (1-based) to a UTF-16 offset, respecting CRLF, LF, and bare CR line endings. */
 function offsetOf(text: string, line: number, column: number): number {
-	const lines = text.split(/\r?\n/);
-	return (
-		lines
-			.slice(0, line - 1)
-			.reduce((offset, value) => offset + value.length + 1, 0) +
-		column -
-		1
-	);
+	const lineEndingPattern = /\r\n|\r|\n/g;
+	let lineStart = 0;
+	let currentLine = 1;
+	let match: RegExpExecArray | null = lineEndingPattern.exec(text);
+	while (currentLine < line && match !== null) {
+		lineStart = match.index + match[0].length;
+		currentLine += 1;
+		match = lineEndingPattern.exec(text);
+	}
+	return lineStart + column - 1;
+}
+
+/** Derives a FixEdit for one error by isolating markdownlint's own applyFixes semantics. */
+function fixEditFor(error: LintError, text: string): Diagnostic["fix"] {
+	if (!error.fixInfo) return undefined;
+	const fixed = applyFixes(text, [error]);
+	return diffToFixEdit(text, fixed);
 }
 
 function diagnostic(
@@ -42,6 +53,7 @@ function diagnostic(
 	const column = error.errorRange?.[0] ?? 1;
 	const length = error.errorRange?.[1] ?? 1;
 	const start = offsetOf(text, error.lineNumber, column);
+	const fix = fixEditFor(error, text);
 	return {
 		engine: "markdownlint",
 		ruleId: error.ruleNames[0] ?? "markdownlint",
@@ -53,6 +65,7 @@ function diagnostic(
 			end: { line: error.lineNumber, column: column + length },
 			range: { start, end: start + length },
 		},
+		...(fix !== undefined ? { fix } : {}),
 	};
 }
 
@@ -116,14 +129,15 @@ export function createMarkdownlintAdapter(
 		async fixText(text, filePath) {
 			const result = await errors(text, filePath);
 			const output = applyFixes(text, result);
+			const diagnostics = result.map((error) =>
+				diagnostic(error, text, filePath),
+			);
 			return {
 				filePath,
 				output,
-				diagnostics: result.map((error) => diagnostic(error, text, filePath)),
-				applied: result
-					.filter((error) => error.fixInfo !== null)
-					.map((error) => diagnostic(error, text, filePath)),
-				remaining: [],
+				diagnostics,
+				applied: diagnostics.filter((item) => item.fix !== undefined),
+				remaining: diagnostics.filter((item) => item.fix === undefined),
 			};
 		},
 	};
