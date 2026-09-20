@@ -6,7 +6,7 @@ import { loadDocumentlintConfig } from "./config/documentlint.js";
 import { runDocumentlint } from "./runner.js";
 
 function usage(): string {
-	return "Usage: documentlint [--config file] [--fix] [--format human|json] [--stdin --stdin-filename path] [files/globs...]\nExit: 0=no findings, 1=findings, 2=configuration or execution error\n";
+	return "Usage: documentlint [--config file] [--fix] [--format human|json] [--stdin --stdin-filename path] [files/globs...]\nConfig: documentlint.json, falling back to .textlintrc.json\nExit: 0=no findings, 1=findings, 2=configuration or execution error\n";
 }
 function human(result: Awaited<ReturnType<typeof runDocumentlint>>): string {
 	return result.diagnostics
@@ -29,7 +29,11 @@ export async function main(
 		const i = args.indexOf(flag);
 		return i === -1 ? undefined : args[i + 1];
 	};
-	const configPath = value("--config") ?? "documentlint.json";
+	const configPath =
+		value("--config") ??
+		(fs.existsSync("documentlint.json")
+			? "documentlint.json"
+			: ".textlintrc.json");
 	const format = value("--format") ?? "human";
 	if (format !== "human" && format !== "json")
 		throw new Error("--format must be human or json");

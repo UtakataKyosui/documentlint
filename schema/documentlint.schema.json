@@ -1,0 +1,66 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://documentlint.dev/schema.json",
+	"title": "documentlint extended textlintrc",
+	"type": "object",
+	"additionalProperties": false,
+	"properties": {
+		"$schema": { "type": "string" },
+		"rules": { "type": "object" },
+		"filters": { "type": "object" },
+		"plugins": { "type": "object" },
+		"documentlint": {
+			"type": "object",
+			"required": ["version"],
+			"additionalProperties": false,
+			"properties": {
+				"version": { "const": 1 },
+				"files": { "type": "array", "items": { "type": "string" } },
+				"ignores": { "type": "array", "items": { "type": "string" } },
+				"prh": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"dictionary": { "type": "object" },
+						"dictionaries": { "type": "array", "items": { "type": "string" } }
+					},
+					"not": { "required": ["dictionary", "dictionaries"] }
+				},
+				"markdown": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"syntax": {
+							"type": "object",
+							"additionalProperties": false,
+							"properties": {
+								"zenn": { "type": "boolean" },
+								"markdownItPlugins": {
+									"type": "array",
+									"items": { "type": "string" }
+								},
+								"plugins": { "$ref": "#/$defs/plugins" }
+							}
+						},
+						"checks": {
+							"type": "object",
+							"additionalProperties": false,
+							"properties": {
+								"markdownlint": { "type": "object" },
+								"plugins": { "$ref": "#/$defs/plugins" }
+							}
+						}
+					}
+				}
+			}
+		}
+	},
+	"$defs": {
+		"plugins": {
+			"type": "object",
+			"additionalProperties": {
+				"oneOf": [{ "type": "boolean" }, { "type": "object" }]
+			}
+		}
+	}
+}

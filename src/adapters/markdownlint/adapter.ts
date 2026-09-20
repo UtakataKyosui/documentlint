@@ -1,3 +1,6 @@
+import { createRequire } from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import MarkdownIt from "markdown-it";
 import type { LintError } from "markdownlint";
 import { applyFixes } from "markdownlint";
@@ -10,7 +13,14 @@ import type {
 
 export interface MarkdownlintAdapterOptions {
 	readonly config?: Record<string, unknown>;
-	readonly markdownItPlugins?: readonly string[];
+	readonly moduleBaseDirectory?: string;
+	readonly markdownItPlugins?: readonly (
+		| string
+		| {
+				readonly plugin: (markdownIt: unknown, options?: unknown) => void;
+				readonly options?: unknown;
+		  }
+	)[];
 }
 
 function offsetOf(text: string, line: number, column: number): number {
@@ -55,15 +65,24 @@ export function createMarkdownlintAdapter(
 	options: MarkdownlintAdapterOptions = {},
 ): MarkdownlintAdapter {
 	async function errors(text: string, filePath: string): Promise<LintError[]> {
+		const requireFromBase = options.moduleBaseDirectory
+			? createRequire(path.join(options.moduleBaseDirectory, "noop.cjs"))
+			: undefined;
 		const plugins = await Promise.all(
-			(options.markdownItPlugins ?? []).map(async (name) => {
-				const module = await import(name);
+			(options.markdownItPlugins ?? []).map(async (configured) => {
+				if (typeof configured !== "string") return configured;
+				const resolved = requireFromBase?.resolve(configured) ?? configured;
+				const module = await import(
+					requireFromBase ? pathToFileURL(resolved).href : resolved
+				);
 				const plugin = module.default ?? module;
 				if (typeof plugin !== "function")
 					throw new Error(
-						`markdownIt plugin "${name}" must export a function.`,
+						`markdownIt plugin "${configured}" must export a function.`,
 					);
-				return plugin as (markdownIt: unknown) => void;
+				return {
+					plugin: plugin as (markdownIt: unknown, options?: unknown) => void,
+				};
 			}),
 		);
 		const lintOptions = {
@@ -73,8 +92,8 @@ export function createMarkdownlintAdapter(
 				? {
 						markdownItFactory: () => {
 							const markdownIt = new MarkdownIt();
-							plugins.forEach((plugin) => {
-								plugin(markdownIt);
+							plugins.forEach((registration) => {
+								registration.plugin(markdownIt, registration.options);
 							});
 							return markdownIt;
 						},
