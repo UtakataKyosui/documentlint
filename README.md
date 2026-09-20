@@ -37,6 +37,8 @@ By default (and with `--all`), documentlint scans the configured `files` glob, o
 
 When a change-based selection includes the configuration file, a prh dictionary, or a dependency manifest, documentlint runs the configured full scan instead and explains the reason on stderr. A diff with no matching files succeeds and reports that nothing was checked.
 
+日本語技術文書・Zenn 向けの設定プリセットと textlint からの移行手順は [プリセットと移行ガイド](docs/presets.md) を参照してください。
+
 Plugin names use the `documentlint-plugin-` prefix, following textlint's naming
 style. For example, `"heading-policy"` resolves to
 `documentlint-plugin-heading-policy`. Scoped packages and paths relative to the

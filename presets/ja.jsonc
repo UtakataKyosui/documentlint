@@ -1,0 +1,18 @@
+{
+	"$schema": "../schema/documentlint.schema.json",
+	"version": 1,
+	"files": ["**/*.md"],
+	"textlint": {
+		"rules": {
+			"preset-ja-technical-writing": true,
+			"preset-ja-spacing": true
+		},
+		"plugins": { "markdown": true }
+	},
+	"markdownlint": {
+		"config": {
+			"default": true,
+			"MD013": false
+		}
+	}
+}
