@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -384,5 +385,293 @@ describe("documentlint CLI", () => {
 
 		expect(stderr).toBe("");
 		expect(exitCode).toBe(0);
+	});
+});
+
+describe("documentlint CLI target selection", () => {
+	function initGitRepo(directory: string): void {
+		execFileSync("git", ["init", "-q"], { cwd: directory });
+		execFileSync("git", ["config", "user.email", "test@example.com"], {
+			cwd: directory,
+		});
+		execFileSync("git", ["config", "user.name", "Test"], { cwd: directory });
+	}
+
+	function commitAll(directory: string, message: string): void {
+		execFileSync("git", ["add", "-A"], { cwd: directory });
+		execFileSync("git", ["commit", "-q", "-m", message], { cwd: directory });
+	}
+
+	async function runInDirectory(
+		directory: string,
+		args: string[],
+	): Promise<number> {
+		const originalCwd = process.cwd();
+		process.chdir(directory);
+		try {
+			return await main(args);
+		} finally {
+			process.chdir(originalCwd);
+		}
+	}
+
+	it("rejects combining two target-selection flags", async () => {
+		await expect(
+			main(["--git-staged", "--jj-revision", "@"]),
+		).rejects.toThrow("Only one target-selection mode");
+	});
+
+	it("rejects a target-selection flag combined with explicit file arguments", async () => {
+		await expect(main(["--git-changed", "article.md"])).rejects.toThrow(
+			"Only one target-selection mode",
+		);
+	});
+
+	it("rejects --stdin combined with a target-selection flag", async () => {
+		await expect(
+			main(["--stdin", "--git-changed"], "# doc\n"),
+		).rejects.toThrow("--stdin cannot be combined");
+	});
+
+	it.each(["--git-since", "--jj-revision", "--jj-since"])(
+		"treats a trailing %s with no value as a configuration error, not a silent default",
+		async (flag) => {
+			await expect(main([flag])).rejects.toThrow(`${flag} requires a value`);
+		},
+	);
+
+	it("--git-staged outside a Git repository fails with a clear error instead of a confusing empty run", async () => {
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), "documentlint-cli-no-git-"),
+		);
+		temporary.push(directory);
+		const configPath = path.join(directory, "documentlint.json");
+		fs.writeFileSync(configPath, JSON.stringify({ version: 1 }));
+
+		await expect(
+			runInDirectory(directory, ["--config", configPath, "--git-staged"]),
+		).rejects.toThrow(/not a git repository/i);
+	});
+
+	it("--git-changed lints an untracked Markdown file selected from a real Git working tree", async () => {
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), "documentlint-cli-git-changed-"),
+		);
+		temporary.push(directory);
+		initGitRepo(directory);
+		const configPath = path.join(directory, "documentlint.json");
+		fs.writeFileSync(
+			configPath,
+			JSON.stringify({
+				version: 1,
+				prh: {
+					dictionary: {
+						version: 1,
+						rules: [{ expected: "JavaScript", pattern: "javascript" }],
+					},
+				},
+			}),
+		);
+		commitAll(directory, "init");
+		fs.writeFileSync(
+			path.join(directory, "article.md"),
+			"javascript is great\n",
+		);
+
+		let output = "";
+		vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+			output += String(chunk);
+			return true;
+		});
+
+		const exitCode = await runInDirectory(directory, [
+			"--config",
+			configPath,
+			"--format",
+			"json",
+			"--git-changed",
+		]);
+
+		const payload = JSON.parse(output) as {
+			results: { filePath: string; diagnostics: unknown[] }[];
+		};
+		expect(payload.results).toHaveLength(1);
+		expect(payload.results[0]?.filePath.endsWith("article.md")).toBe(true);
+		expect(payload.results[0]?.diagnostics).not.toEqual([]);
+		expect(exitCode).toBe(1);
+	});
+
+	it("--git-changed checks the whole changed file, not only its changed lines: a pre-existing violation earlier in the file is still reported", async () => {
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), "documentlint-cli-git-wholefile-"),
+		);
+		temporary.push(directory);
+		initGitRepo(directory);
+		const configPath = path.join(directory, "documentlint.json");
+		fs.writeFileSync(
+			configPath,
+			JSON.stringify({
+				version: 1,
+				prh: {
+					dictionary: {
+						version: 1,
+						rules: [{ expected: "JavaScript", pattern: "javascript" }],
+					},
+				},
+			}),
+		);
+		const articlePath = path.join(directory, "article.md");
+		// The violation on the first line is already committed; only the
+		// second line is part of the uncommitted diff.
+		fs.writeFileSync(articlePath, "javascript is great\n");
+		commitAll(directory, "init");
+		fs.appendFileSync(articlePath, "a second, unrelated line\n");
+
+		let output = "";
+		vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+			output += String(chunk);
+			return true;
+		});
+
+		const exitCode = await runInDirectory(directory, [
+			"--config",
+			configPath,
+			"--format",
+			"json",
+			"--git-changed",
+		]);
+
+		const payload = JSON.parse(output) as {
+			results: { diagnostics: { ruleId: string }[] }[];
+		};
+		expect(
+			payload.results[0]?.diagnostics.some((item) => item.ruleId === "prh"),
+		).toBe(true);
+		expect(exitCode).toBe(1);
+	});
+
+	it("--git-changed with nothing changed exits 0 and reports there was nothing to check", async () => {
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), "documentlint-cli-git-empty-"),
+		);
+		temporary.push(directory);
+		initGitRepo(directory);
+		const configPath = path.join(directory, "documentlint.json");
+		fs.writeFileSync(configPath, JSON.stringify({ version: 1 }));
+		fs.writeFileSync(path.join(directory, "article.md"), "# ok\n");
+		commitAll(directory, "init");
+
+		let stderrOutput = "";
+		vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+			stderrOutput += String(chunk);
+			return true;
+		});
+
+		const exitCode = await runInDirectory(directory, [
+			"--config",
+			configPath,
+			"--git-changed",
+		]);
+
+		expect(exitCode).toBe(0);
+		expect(stderrOutput).toContain("No changed files matched");
+	});
+
+	it("running --git-changed while the config file itself changed escalates to a full scan and reports why on stderr", async () => {
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), "documentlint-cli-escalate-"),
+		);
+		temporary.push(directory);
+		initGitRepo(directory);
+		const configPath = path.join(directory, "documentlint.json");
+		const dictionary = {
+			version: 1,
+			rules: [{ expected: "JavaScript", pattern: "javascript" }],
+		};
+		fs.writeFileSync(
+			configPath,
+			JSON.stringify({ version: 1, prh: { dictionary } }),
+		);
+		// Untouched by the uncommitted diff below, but should still be found
+		// once the config change escalates the run to a full scan.
+		fs.writeFileSync(
+			path.join(directory, "other.md"),
+			"javascript is great\n",
+		);
+		commitAll(directory, "init");
+
+		fs.writeFileSync(
+			configPath,
+			JSON.stringify({
+				version: 1,
+				ignores: ["nonexistent/**"],
+				prh: { dictionary },
+			}),
+		);
+
+		let stdoutOutput = "";
+		let stderrOutput = "";
+		vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+			stdoutOutput += String(chunk);
+			return true;
+		});
+		vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+			stderrOutput += String(chunk);
+			return true;
+		});
+
+		const exitCode = await runInDirectory(directory, [
+			"--config",
+			configPath,
+			"--format",
+			"json",
+			"--git-changed",
+		]);
+
+		expect(stderrOutput).toContain("documentlint.json");
+		expect(stderrOutput).toContain("running a full scan");
+		const payload = JSON.parse(stdoutOutput) as {
+			results: { filePath: string }[];
+			notices?: string[];
+		};
+		expect(
+			payload.results.some((item) => item.filePath.endsWith("other.md")),
+		).toBe(true);
+		expect(payload.notices?.[0]).toContain("documentlint.json");
+		expect(exitCode).toBe(1);
+	});
+
+	it("--all forces a full scan with the configured files glob, excluding node_modules by default", async () => {
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), "documentlint-cli-all-"),
+		);
+		temporary.push(directory);
+		const configPath = path.join(directory, "documentlint.json");
+		fs.writeFileSync(configPath, JSON.stringify({ version: 1 }));
+		fs.writeFileSync(path.join(directory, "a.md"), "# a\n");
+		fs.writeFileSync(path.join(directory, "b.md"), "# b\n");
+		fs.mkdirSync(path.join(directory, "node_modules"));
+		fs.writeFileSync(path.join(directory, "node_modules", "c.md"), "# c\n");
+
+		let output = "";
+		vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+			output += String(chunk);
+			return true;
+		});
+
+		await runInDirectory(directory, [
+			"--config",
+			configPath,
+			"--format",
+			"json",
+			"--all",
+		]);
+
+		const payload = JSON.parse(output) as { results: { filePath: string }[] };
+		const basenames = payload.results
+			.map((item) => path.basename(item.filePath))
+			.sort();
+		expect(basenames).toEqual(["a.md", "b.md"]);
 	});
 });

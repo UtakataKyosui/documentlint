@@ -37,6 +37,13 @@ describe("writeFileIfUnchanged", () => {
 		expect(siblings).toEqual(["article.md"]);
 	});
 
+	it("preserves the target file mode across the atomic rename", () => {
+		const filePath = tempFile("original\n");
+		fs.chmodSync(filePath, 0o755);
+		writeFileIfUnchanged(filePath, "original\n", "fixed\n");
+		expect(fs.statSync(filePath).mode & 0o777).toBe(0o755);
+	});
+
 	it("refuses to write, and preserves the external edit, when the file changed since it was read", () => {
 		const filePath = tempFile("original\n");
 		fs.writeFileSync(filePath, "someone else's edit\n");
