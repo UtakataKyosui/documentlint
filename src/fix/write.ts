@@ -31,6 +31,7 @@ export function writeFileIfUnchanged(
 ): void {
 	const current = fs.readFileSync(filePath, "utf8");
 	if (current !== expectedOriginal) throw new ExternalChangeError(filePath);
+	const mode = fs.statSync(filePath).mode & 0o777;
 
 	const directory = path.dirname(filePath);
 	const tempPath = path.join(
@@ -38,6 +39,7 @@ export function writeFileIfUnchanged(
 		`.${path.basename(filePath)}.documentlint-${process.pid}-${Date.now()}.tmp`,
 	);
 	fs.writeFileSync(tempPath, newContent);
+	fs.chmodSync(tempPath, mode);
 	try {
 		const stillCurrent = fs.readFileSync(filePath, "utf8");
 		if (stillCurrent !== expectedOriginal)

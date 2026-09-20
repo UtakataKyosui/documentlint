@@ -14,7 +14,7 @@
 | `presets`（`preset-` 接頭辞のルール指定） | 対応 | preset 内ルールへオプションを展開する |
 | `filters` | 対応 | filter rule として解決する |
 | `plugins` | 対応 | processor plugin として解決する |
-| `.textlintignore` | 部分対応 | 呼び出し側が `ignoreFilePath` を明示したときのみ適用する。自動探索はしない |
+| `.textlintignore` | 対応 | 選択した設定ファイルと同じディレクトリから自動読込する。`--ignore-path` で差し替えられる |
 | `--rulesdir` | 非対応 | 受け取る API を提供しない。設定ファイル経由で指定する手段も無い |
 | 上記以外のトップレベルキー | 非対応 | `UnsupportedConfigError` |
 
