@@ -39,6 +39,11 @@ relative paths and plugin modules are resolved from the configuration file.
 
 ## CLI configuration and targets
 
+`--version` works without configuration. `--init` creates a minimal
+`documentlint.json` and refuses to overwrite existing settings. `--print-config`
+prints the selected path and effective configuration, while `--debug` explains
+selection decisions on stderr so it can be combined with JSON output.
+
 Without `--config`, documentlint searches from the current directory upward to
 the filesystem root. In each directory, `documentlint.json` takes precedence
 over `.textlintrc.json`; `--config` is resolved from the current directory and

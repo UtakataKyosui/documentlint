@@ -34,6 +34,10 @@ const FLAGS_WITH_VALUE = [
 	"--ignore-path",
 ] as const;
 const VALUELESS_FLAGS = [
+	"--version",
+	"--init",
+	"--print-config",
+	"--debug",
 	"--stdin",
 	"--fix",
 	"--dry-run",
@@ -46,6 +50,10 @@ function usage(): string {
 	return [
 		"Usage: documentlint [--config file] [--ignore-path file] [--fix] [--dry-run] [--max-iterations n] [--format human|json] [--stdin --stdin-filename path] [--all | --git-staged | --git-changed | --git-since rev | --jj-revision rev | --jj-since rev | files/globs...]",
 		"Config: searches parent directories for documentlint.json then .textlintrc.json; --config selects exactly one file.",
+		"  --version            print the package version without loading configuration",
+		"  --init               create documentlint.json in the current directory",
+		"  --print-config       print the selected path and effective configuration",
+		"  --debug              explain configuration, target selection, and scan decisions on stderr",
 		"--fix writes resolved files to disk; --dry-run computes the same fixes and previews them without writing (implies --fix's analysis, never writes)",
 		"Target selection (at most one; with none of these and no file/glob arguments, the configured `files` glob is used):",
 		"  --all                scan every file the configured `files` glob matches (default: **/*.md)",
@@ -124,6 +132,31 @@ export async function main(
 		process.stdout.write(usage());
 		return 0;
 	}
+	if (args[0] === "--version") {
+		if (args.length !== 1) throw new Error("--version must be used alone.");
+		const packagePath = new URL("../package.json", import.meta.url);
+		const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8")) as {
+			version?: string;
+		};
+		process.stdout.write(`${packageJson.version ?? "0.0.0"}\n`);
+		return 0;
+	}
+	if (args[0] === "--init") {
+		if (args.length !== 1)
+			throw new Error("--init cannot be combined with lint or configuration options.");
+		const target = path.resolve(process.cwd(), "documentlint.json");
+		if (fs.existsSync(target) || fs.existsSync(path.join(process.cwd(), ".textlintrc.json")))
+			throw new Error(`Configuration already exists in ${process.cwd()}; refusing to overwrite it.`);
+		fs.writeFileSync(
+			target,
+			`${JSON.stringify({ version: 1, files: ["**/*.md"], markdownlint: { config: { default: true, MD013: false } } }, null, 2)}\n`,
+			{ mode: 0o644, flag: "wx" },
+		);
+		process.stdout.write(
+			`Created ${target} with Markdown checks enabled. Run documentlint. For Japanese rules: pnpm add -D textlint-rule-preset-ja-technical-writing textlint-rule-preset-ja-spacing @textlint/textlint-plugin-markdown; see docs/presets.md for configuration.\n`,
+		);
+		return 0;
+	}
 	const value = (flag: string) => {
 		const i = args.indexOf(flag);
 		return i === -1 ? undefined : args[i + 1];
@@ -169,6 +202,10 @@ export async function main(
 	)
 		throw new Error("--max-iterations must be a positive integer");
 	const stdinMode = args.includes("--stdin");
+	const debug = args.includes("--debug");
+	const debugLog = (message: string): void => {
+		if (debug) process.stderr.write(`documentlint: debug: ${message}\n`);
+	};
 	const stdinText = stdin ?? (stdinMode ? fs.readFileSync(0, "utf8") : "");
 	const positional = args.filter(
 		(arg, i) =>
@@ -225,6 +262,13 @@ export async function main(
 	const discoveredConfig = discoverConfig(process.cwd(), value("--config"));
 	const configPath = discoveredConfig.path;
 	const config = loadDocumentlintConfig(configPath);
+	debugLog(`using configuration ${configPath}`);
+	if (args.includes("--print-config")) {
+		process.stdout.write(
+			`${JSON.stringify({ path: configPath, config }, null, 2)}\n`,
+		);
+		return 0;
+	}
 	const configDirectory = discoveredConfig.directory;
 	const ignorePath = value("--ignore-path")
 		? path.resolve(configDirectory, value("--ignore-path") ?? "")
@@ -249,11 +293,13 @@ export async function main(
 			selectionCwd,
 		);
 		files = selected.map((file) => path.resolve(selectionCwd, file));
+		debugLog(`selected ${files.length} file(s) from configured/explicit globs`);
 		if (positional.length > 0 && files.length === 0)
 			throw new Error(
 				`No files matched the explicit target(s): ${positional.join(", ")}.`,
 			);
 	} else {
+		debugLog(`selecting changed files from ${vcsSelection.source}`);
 		const escalationTriggers = [
 			path.resolve(configPath),
 			path.join(process.cwd(), "package.json"),
@@ -281,8 +327,10 @@ export async function main(
 			files = (await selectExplicitFiles(filePatterns, ignores, configDirectory)).map(
 				(file) => path.resolve(configDirectory, file),
 			);
+			debugLog(`full scan selected because ${trigger} changed`);
 		} else {
 			files = selection.files;
+			debugLog(`selected ${files.length} changed file(s)`);
 			if (files.length === 0)
 				notices.push("No changed files matched; nothing to check.");
 		}

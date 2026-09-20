@@ -13,6 +13,51 @@ afterEach(() => {
 });
 
 describe("documentlint CLI", () => {
+	it("prints the package version without requiring a configuration", async () => {
+		let output = "";
+		vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+			output += String(chunk);
+			return true;
+		});
+
+		expect(await main(["--version"])).toBe(0);
+		expect(output.trim()).toBe("0.0.0");
+	});
+
+	it("creates a minimal configuration with --init and refuses to overwrite it", async () => {
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), "documentlint-cli-init-"));
+		temporary.push(directory);
+		const originalCwd = process.cwd();
+		process.chdir(directory);
+		try {
+			expect(await main(["--init"])).toBe(0);
+			expect(JSON.parse(fs.readFileSync(path.join(directory, "documentlint.json"), "utf8"))).toEqual({
+				version: 1,
+				files: ["**/*.md"],
+				markdownlint: { config: { default: true, MD013: false } },
+			});
+			await expect(main(["--init"])).rejects.toThrow("refusing to overwrite");
+		} finally {
+			process.chdir(originalCwd);
+		}
+	});
+
+	it("prints the selected path and effective config without linting", async () => {
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), "documentlint-cli-print-config-"));
+		temporary.push(directory);
+		const configPath = path.join(directory, "documentlint.json");
+		fs.writeFileSync(configPath, JSON.stringify({ version: 1, files: ["docs/**/*.md"] }));
+		let output = "";
+		vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+			output += String(chunk);
+			return true;
+		});
+
+		expect(await main(["--config", configPath, "--print-config"])).toBe(0);
+		const payload = JSON.parse(output) as { path: string; config: { files: string[] } };
+		expect(payload.path).toBe(path.resolve(configPath));
+		expect(payload.config.files).toEqual(["docs/**/*.md"]);
+	});
 	it("runs all configured engines from an extended textlintrc", async () => {
 		const directory = fs.mkdtempSync(
 			path.join(os.tmpdir(), "documentlint-cli-"),
