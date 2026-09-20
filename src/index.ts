@@ -38,6 +38,7 @@ export {
 	resolveTextlintrc,
 	resolveTextlintrcObject,
 } from "./config/textlintrc.js";
+export { diffToFixEdit } from "./diagnostics/diff.js";
 export {
 	normalizeFixResult,
 	normalizeMessage,
@@ -47,6 +48,7 @@ export type {
 	Diagnostic,
 	DiagnosticLocation,
 	DiagnosticSeverity,
+	FixConflict,
 	FixEdit,
 	FixResult,
 	LintResult,
@@ -55,6 +57,17 @@ export type {
 	Suggestion,
 	TextRange,
 } from "./diagnostics/types.js";
+export { renderDiffPreview } from "./fix/diff-preview.js";
+export type { MergeEditsResult } from "./fix/edits.js";
+export { mergeEdits } from "./fix/edits.js";
+export type {
+	SafeFixIteration,
+	SafeFixOptions,
+	SafeFixResult,
+	SafeFixStopReason,
+} from "./fix/session.js";
+export { safeFixDocument } from "./fix/session.js";
+export { ExternalChangeError, writeFileIfUnchanged } from "./fix/write.js";
 export type {
 	DocumentlintPlugin,
 	DocumentlintPluginContext,
@@ -72,4 +85,9 @@ export {
 } from "./plugins/index.js";
 export type { RunResult } from "./runner.js";
 export { runDocumentlint } from "./runner.js";
-export { maskZennSyntax } from "./zenn/mask.js";
+export type { ZennMaskResult } from "./zenn/mask.js";
+export {
+	isRangeMasked,
+	maskZennSyntax,
+	maskZennSyntaxRanges,
+} from "./zenn/mask.js";

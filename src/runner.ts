@@ -10,7 +10,13 @@ import {
 	resolveTextlintrc,
 	resolveTextlintrcObject,
 } from "./config/textlintrc.js";
-import type { Diagnostic, FixResult, LintResult } from "./diagnostics/types.js";
+import type {
+	Diagnostic,
+	FixConflict,
+	FixResult,
+	LintResult,
+} from "./diagnostics/types.js";
+import { mergeEdits } from "./fix/edits.js";
 import {
 	DocumentlintPluginError,
 	loadDocumentlintPlugins,
@@ -19,13 +25,17 @@ import type {
 	DocumentlintPluginContext,
 	DocumentlintPluginDiagnostic,
 } from "./plugins/types.js";
-import { maskZennSyntax } from "./zenn/mask.js";
+import { isRangeMasked, maskZennSyntaxRanges } from "./zenn/mask.js";
 
 export interface RunResult {
 	readonly filePath: string;
 	readonly output: string;
 	readonly diagnostics: readonly Diagnostic[];
 	readonly errors: readonly { engine: string; message: string }[];
+	/** Diagnostics whose fix was actually spliced into `output` this round (fix=true only). */
+	readonly applied: readonly Diagnostic[];
+	/** Fix edits whose ranges overlapped on this round's input; see FixConflict. */
+	readonly conflicts: readonly FixConflict[];
 }
 
 function compare(a: Diagnostic, b: Diagnostic): number {
@@ -146,7 +156,10 @@ export async function runDocumentlint(
 				loaded.id,
 				"a markdown.checks plugin must expose lint.",
 			);
-	let input = config.zenn?.enabled ? maskZennSyntax(text) : text;
+	const zennMask = config.zenn?.enabled
+		? maskZennSyntaxRanges(text)
+		: undefined;
+	let input = zennMask?.masked ?? text;
 	for (const loaded of syntaxPlugins) {
 		if (loaded.plugin.preprocess === undefined) continue;
 		const context: DocumentlintPluginContext = {
@@ -162,6 +175,7 @@ export async function runDocumentlint(
 	type TaskResult = {
 		readonly diagnostics: readonly Diagnostic[];
 		readonly output?: string;
+		readonly applied?: readonly Diagnostic[];
 		readonly engine: string;
 	};
 	const tasks: { engine: string; promise: Promise<TaskResult> }[] = [];
@@ -187,7 +201,9 @@ export async function runDocumentlint(
 				: adapter.lintText(input, filePath)
 			).then((result) => ({
 				diagnostics: result.diagnostics,
-				...(isFixResult(result) ? { output: result.output } : {}),
+				...(isFixResult(result)
+					? { output: result.output, applied: result.applied }
+					: {}),
 				engine: "textlint",
 			})),
 		});
@@ -227,7 +243,9 @@ export async function runDocumentlint(
 				: adapter.lintText(input, filePath)
 			).then((result) => ({
 				diagnostics: result.diagnostics,
-				...(isFixResult(result) ? { output: result.output } : {}),
+				...(isFixResult(result)
+					? { output: result.output, applied: result.applied }
+					: {}),
 				engine: "markdownlint",
 			})),
 		});
@@ -242,7 +260,9 @@ export async function runDocumentlint(
 					: adapter.lintText(input, filePath),
 			).then((result) => ({
 				diagnostics: result.diagnostics,
-				...(isFixResult(result) ? { output: result.output } : {}),
+				...(isFixResult(result)
+					? { output: result.output, applied: result.applied }
+					: {}),
 				engine: "prh",
 			})),
 		});
@@ -261,7 +281,9 @@ export async function runDocumentlint(
 					: adapter.lintText(input, filePath),
 			).then((result) => ({
 				diagnostics: result.diagnostics,
-				...(isFixResult(result) ? { output: result.output } : {}),
+				...(isFixResult(result)
+					? { output: result.output, applied: result.applied }
+					: {}),
 				engine: "prh",
 			})),
 		});
@@ -289,7 +311,7 @@ export async function runDocumentlint(
 	const settled = await Promise.allSettled(tasks.map((task) => task.promise));
 	const diagnostics: Diagnostic[] = [];
 	const errors: { engine: string; message: string }[] = [];
-	let output = text;
+	const appliedAcrossEngines: Diagnostic[] = [];
 	settled.forEach((result, index) => {
 		if (result.status === "rejected")
 			errors.push({
@@ -301,13 +323,50 @@ export async function runDocumentlint(
 			});
 		else {
 			diagnostics.push(...result.value.diagnostics);
-			if (
-				fix &&
-				result.value.output !== undefined &&
-				result.value.output !== input
-			)
-				output = result.value.output;
+			if (fix && result.value.applied !== undefined)
+				appliedAcrossEngines.push(...result.value.applied);
 		}
 	});
-	return { filePath, output, diagnostics: diagnostics.sort(compare), errors };
+	// Edits are applied to the original, unmasked `text` rather than the
+	// preprocessed `input`: preprocessing (zenn masking, syntax plugins) is
+	// guaranteed to preserve length and line breaks, so every offset an
+	// engine reports against `input` is valid against `text` too, and
+	// splicing onto `text` keeps masked-but-untouched regions (frontmatter,
+	// fenced code) intact instead of writing back the masked placeholder.
+	//
+	// A rule can still fire on the mask itself (e.g. a run of spaces inside a
+	// masked fence tripping a whitespace rule); such a fix was computed
+	// against a placeholder the engine never really saw, so it is dropped
+	// rather than spliced into the real, unmasked content underneath it.
+	const trustworthy = appliedAcrossEngines.filter((diagnostic) => {
+		if (diagnostic.fix === undefined) return true;
+		const { range } = diagnostic.fix;
+		// A rule can fire on a masked region without ever changing a visible
+		// character (e.g. deleting one of several blank lines the mask turned
+		// into all-space lines, or inserting nothing at all): the string
+		// comparison below only catches a masked span whose *content*
+		// changed, not one whose *range* sits inside a mask, so both checks
+		// run. isRangeMasked checks the fix's range against the exact spans
+		// maskZennSyntaxRanges rewrote, which a naive
+		// `slice(start, end) === slice(start, end)` comparison cannot: it
+		// stays accurate even when the touched bytes (a newline, a run of
+		// spaces, or nothing at all for a zero-length insertion) happen to
+		// read identically in `text` and `input`.
+		if (zennMask !== undefined && isRangeMasked(range, zennMask.ranges))
+			return false;
+		return (
+			text.slice(range.start, range.end) === input.slice(range.start, range.end)
+		);
+	});
+	const merged = fix
+		? mergeEdits(text, trustworthy)
+		: { text, applied: [], conflicts: [] };
+	return {
+		filePath,
+		output: merged.text,
+		diagnostics: diagnostics.sort(compare),
+		errors,
+		applied: merged.applied,
+		conflicts: merged.conflicts,
+	};
 }

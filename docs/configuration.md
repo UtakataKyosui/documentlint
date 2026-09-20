@@ -47,6 +47,29 @@ Plugin API version 1 is diagnostic-only; check plugins do not participate in
 A plain textlintrc without a `documentlint` block remains valid. The former
 `documentlint.json` format is also accepted while projects migrate.
 
+## Multi-round `--fix`
+
+`documentlint --fix` re-runs every engine's fix pass to a fixed point: each
+round's output becomes the next round's input, so an edit that only becomes
+visible after another engine's fix still gets picked up on a later round.
+`--dry-run` runs the same multi-round analysis and previews the result with a
+unified diff instead of writing to disk.
+
+`--max-iterations n` caps how many rounds a fix run may take before giving up;
+it defaults to 10. A run can also stop early if a round's output repeats one
+already seen, which means two rules are undoing each other in a cycle. Either
+case is reported through `stoppedReason` (`converged`, `max-iterations`, or
+`cycle-detected`) in `--format json` output, and as a warning on stderr in the
+default human format, because the settled text can be partially or
+over-applied when the round cap is hit.
+
+Because `--fix` can take several rounds where a single textlint fix pass takes
+one, the result of `--fix` on a document can differ from applying the
+underlying engines' fixes once. A `prh` dictionary rule whose expected term
+still matches its own pattern is a common way to hit `--max-iterations`: each
+round's replacement immediately qualifies as the next round's match, so the
+text keeps growing until the cap stops it.
+
 ## Plugin API
 
 Packages use the `documentlint-plugin-<name>` convention. `@scope/name` maps to
