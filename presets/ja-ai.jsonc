@@ -1,5 +1,4 @@
 {
-	"$schema": "../schema/documentlint.schema.json",
 	"version": 1,
 	"files": ["**/*.md"],
 	"textlint": {

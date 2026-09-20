@@ -132,7 +132,8 @@ export async function main(
 		process.stdout.write(usage());
 		return 0;
 	}
-	if (args.includes("--version")) {
+	if (args[0] === "--version") {
+		if (args.length !== 1) throw new Error("--version must be used alone.");
 		const packagePath = new URL("../package.json", import.meta.url);
 		const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8")) as {
 			version?: string;
@@ -140,7 +141,7 @@ export async function main(
 		process.stdout.write(`${packageJson.version ?? "0.0.0"}\n`);
 		return 0;
 	}
-	if (args.includes("--init")) {
+	if (args[0] === "--init") {
 		if (args.length !== 1)
 			throw new Error("--init cannot be combined with lint or configuration options.");
 		const target = path.resolve(process.cwd(), "documentlint.json");
@@ -148,11 +149,11 @@ export async function main(
 			throw new Error(`Configuration already exists in ${process.cwd()}; refusing to overwrite it.`);
 		fs.writeFileSync(
 			target,
-			`${JSON.stringify({ version: 1, files: ["**/*.md"] }, null, 2)}\n`,
+			`${JSON.stringify({ version: 1, files: ["**/*.md"], markdownlint: { config: { default: true, MD013: false } } }, null, 2)}\n`,
 			{ mode: 0o644, flag: "wx" },
 		);
 		process.stdout.write(
-			`Created ${target}. Add textlint/markdownlint/prh rules as needed, then run documentlint.\n`,
+			`Created ${target} with Markdown checks enabled. Run documentlint. For Japanese rules: pnpm add -D textlint-rule-preset-ja-technical-writing textlint-rule-preset-ja-spacing @textlint/textlint-plugin-markdown; see docs/presets.md for configuration.\n`,
 		);
 		return 0;
 	}

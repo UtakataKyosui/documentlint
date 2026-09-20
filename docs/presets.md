@@ -13,7 +13,7 @@ documentlint は既存の textlint ルールを組み合わせた設定プリセ
 プリセットファイルをプロジェクトの `documentlint.json` としてコピーし、必要なルールパッケージを追加します。npm パッケージに含まれるファイルの場所は配布設定に従うため、公開パッケージを利用する場合は `documentlint/presets/ja-zenn.jsonc` を参照してください。
 
 ```sh
-pnpm add -D documentlint textlint-rule-preset-ja-technical-writing textlint-rule-preset-ja-spacing
+pnpm add -D documentlint textlint-rule-preset-ja-technical-writing textlint-rule-preset-ja-spacing @textlint/textlint-plugin-markdown
 cp node_modules/documentlint/presets/ja-zenn.jsonc documentlint.json
 pnpm exec documentlint --fix
 ```
@@ -30,13 +30,13 @@ AI プリセットを選ぶ場合は `@textlint-ja/textlint-rule-preset-ai-writi
 	"textlint": {
 		"rules": {
 			"preset-ja-technical-writing": {
-				"sentence-length": { "max": 120 },
-				"ja-hiragana-fukushi": false
+				"sentence-length": { "max": 120 }
 			},
 			"preset-ja-spacing": {
 				"ja-space-between-half-and-full-width": { "space": 1 }
 			}
-		}
+		},
+		"plugins": { "markdown": true }
 	},
 	"zenn": { "enabled": true }
 }

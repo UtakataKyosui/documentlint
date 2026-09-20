@@ -34,6 +34,7 @@ describe("documentlint CLI", () => {
 			expect(JSON.parse(fs.readFileSync(path.join(directory, "documentlint.json"), "utf8"))).toEqual({
 				version: 1,
 				files: ["**/*.md"],
+				markdownlint: { config: { default: true, MD013: false } },
 			});
 			await expect(main(["--init"])).rejects.toThrow("refusing to overwrite");
 		} finally {
