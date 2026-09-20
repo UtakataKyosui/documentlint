@@ -229,10 +229,11 @@ export async function main(
 	const ignorePath = value("--ignore-path")
 		? path.resolve(configDirectory, value("--ignore-path") ?? "")
 		: path.join(configDirectory, ".textlintignore");
+	const selectionCwd = positional.length ? process.cwd() : configDirectory;
 	const ignores = [
 		...(config.ignores ?? []),
 		...(config.markdownlint?.ignores ?? []),
-		...readIgnorePatterns(ignorePath),
+		...readIgnorePatterns(ignorePath, value("--ignore-path") !== undefined),
 	];
 	const filePatterns = positional.length
 		? positional
@@ -242,11 +243,12 @@ export async function main(
 	if (stdinMode) {
 		files = [value("--stdin-filename") ?? "stdin.md"];
 	} else if (vcsSelection === undefined) {
-		files = await selectExplicitFiles(
+		const selected = await selectExplicitFiles(
 			filePatterns,
 			ignores,
-			positional.length ? process.cwd() : configDirectory,
+			selectionCwd,
 		);
+		files = selected.map((file) => path.resolve(selectionCwd, file));
 		if (positional.length > 0 && files.length === 0)
 			throw new Error(
 				`No files matched the explicit target(s): ${positional.join(", ")}.`,
@@ -276,7 +278,9 @@ export async function main(
 			notices.push(
 				`${path.relative(process.cwd(), trigger)} changed; running a full scan instead of the requested diff.`,
 			);
-			files = await selectExplicitFiles(filePatterns, ignores, configDirectory);
+			files = (await selectExplicitFiles(filePatterns, ignores, configDirectory)).map(
+				(file) => path.resolve(configDirectory, file),
+			);
 		} else {
 			files = selection.files;
 			if (files.length === 0)

@@ -674,4 +674,50 @@ describe("documentlint CLI target selection", () => {
 			.sort();
 		expect(basenames).toEqual(["a.md", "b.md"]);
 	});
+
+	it("resolves configured globs from a parent configuration directory", async () => {
+		const parent = fs.mkdtempSync(path.join(os.tmpdir(), "documentlint-parent-config-"));
+		const child = path.join(parent, "packages", "docs");
+		temporary.push(parent);
+		fs.mkdirSync(child, { recursive: true });
+		const configPath = path.join(parent, "documentlint.json");
+		fs.writeFileSync(
+			configPath,
+			JSON.stringify({
+				version: 1,
+				files: ["packages/docs/**/*.md"],
+				prh: { dictionary: { version: 1, rules: [] } },
+			}),
+		);
+		const article = path.join(child, "article.md");
+		fs.writeFileSync(article, "# ok\n");
+
+		let output = "";
+		vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+			output += String(chunk);
+			return true;
+		});
+		const exitCode = await runInDirectory(child, ["--format", "json"]);
+
+		const payload = JSON.parse(output) as { results: { filePath: string }[] };
+		expect(payload.results).toHaveLength(1);
+		expect(payload.results[0]?.filePath).toBe(fs.realpathSync(article));
+		expect(exitCode).toBe(0);
+	});
+
+	it("fails when an explicitly selected ignore file does not exist", async () => {
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), "documentlint-missing-ignore-"));
+		temporary.push(directory);
+		const configPath = path.join(directory, "documentlint.json");
+		fs.writeFileSync(configPath, JSON.stringify({ version: 1 }));
+
+		await expect(
+			runInDirectory(directory, [
+				"--config",
+				configPath,
+				"--ignore-path",
+				"missing.ignore",
+			]),
+		).rejects.toThrow("Ignore file does not exist");
+	});
 });

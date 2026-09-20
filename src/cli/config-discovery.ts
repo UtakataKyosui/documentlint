@@ -39,7 +39,10 @@ export function discoverConfig(
 }
 
 /** textlint's ignore file format is a newline-separated glob list. */
-export function readIgnorePatterns(ignorePath: string): readonly string[] {
+export function readIgnorePatterns(
+	ignorePath: string,
+	required = false,
+): readonly string[] {
 	try {
 		return fs
 			.readFileSync(ignorePath, "utf8")
@@ -47,7 +50,10 @@ export function readIgnorePatterns(ignorePath: string): readonly string[] {
 			.map((line) => line.trim())
 			.filter((line) => line !== "" && !line.startsWith("#"));
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+			if (!required) return [];
+			throw new Error(`Ignore file does not exist: ${ignorePath}`);
+		}
 		throw new Error(`Could not read ignore file ${ignorePath}: ${String(error)}`);
 	}
 }
